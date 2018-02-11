@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <link rel="stylesheet" type="text/css" href="css/hax.css">
+    </head>
+
+    <body>
+        <div id="error" class="hide"></div>
+        <div id="login">
+            <div id="username">
+                <div class="label">> Username</div>
+                <div class="words">
+                    <div class="inner"></div>
+                    <div class="cursor">_</div>
+                </div>
+            </div>
+            <div id="password">
+                <div class="label">> Password</div>
+                <div class="words">
+                    <div class="inner"></div>
+                    <div class="cursor hide">_</div>
+                </div>
+            </div>
+        </div>
+        <div id="status"></div>
+        <script type="text/javascript">
+            (() => {
+                console.log('init');
+
+                const getRandomInt = (max) => {
+                  return Math.floor(Math.random() * Math.floor(max));
+                };
+
+                const el = (q) => {
+                    return document.querySelector(q);
+                };
+
+                const usernameEl = el('#username .words .inner');
+                const userCursor = el('#username .words .cursor');
+                const passwordEl = el('#password .words .inner');
+                const passCursor = el('#password .words .cursor');
+                const statusEl = el('#status');
+
+                // Configure lightdm if available
+                if (typeof lightdm !== 'undefined') {
+                    console.log("lightdm found!");
+                    greeter_config.branding.background_images = [
+                        'images/night.jgp',
+                    ];
+                    //greeter_config.branding.logo = 
+                    greeter_config.greeter.webkit_theme = 'hax-greeter';
+                }
+
+                let field = 0;
+                let credentials = {
+                    username: "",
+                    password: ""
+                };
+                const alpha = 'abcdefghijklmnopqrstuvwxyz';
+
+                const appendLetter = (el) => {
+                    el.innerText += alpha[getRandomInt(26)];
+                };
+
+                const deleteLetter = (el) => {
+                    el.innerText = el.innerText.slice(0,-1);
+                };
+
+                const startAuth = (username) => {
+                    if (typeof lightdm !== 'undefined') {
+                        lightdm.cancel_timed_login();
+                        lightdm.start_authentication(username);
+                    }
+                };
+
+                const clear = () => {
+                    usernameEl.innerText = credentials.username = '';
+                    passwordEl.innerText = credentials.password = '';
+                };
+
+                const showError = (msg) => {
+                    const errorEl = el('#error');
+                    errorEl.innerText = msg;
+                    errorEl.classList.remove('hide');
+                    setTimeout(hideError, 5000);
+                };
+
+                const hideError = () => {
+                    const errorEl = el('#error');
+                    errorEl.innerText = '';
+                    errorEl.classList.add('hide');
+                };
+
+                // capture key input
+                document.onkeydown = (ev) => {
+                    dv = ev || window.event;
+                    
+                    // If someone hits escape, clear
+                    if (dv.key === 'Esc') {
+                        usernameEl.innerText = credentials.username = '';
+                        passwordEl.innerText = credentials.password = '';
+                    }
+                    // Ignore these 
+                    else if (
+                        ['Control', 'Alt', 'Shift', 'Tab'].indexOf(dv.key) > -1
+                        || dv.key.match(/(F[0-9]+)/) !== null
+                    ) {
+                        return;
+                    }
+                    // Handle backspace 
+                    else if (dv.key === 'Backspace') {
+                        if (field === 0) {
+                            if (credentials.username.length > 0) {
+                                credentials.username = credentials.username.slice(0,-1);
+                                deleteLetter(usernameEl);
+                            }
+                        } else if (field === 1) {
+                            if (credentials.password.length > 0) {
+                                credentials.password = credentials.password.slice(0,-1);
+                                deleteLetter(passwordEl);
+                            }
+                        }
+                    }
+                    // Keys for username field 
+                    else if (field === 0) {
+                        if (dv.key === 'Enter') {
+                            field = 1;
+                            startAuth(credentials.username);
+                            
+                            userCursor.classList.add('hide');
+                            passCursor.classList.remove('hide');
+                        } else {
+                            credentials.username += dv.key;
+                            appendLetter(usernameEl);
+                        }
+                    }
+                    // Keys for password field 
+                    else if (field === 1) {
+                        if (dv.key === 'Enter') {
+                            console.log(`Logging in as ${credentials.username}`);
+                            passCursor.classList.add('hide');
+                            let response;
+                            if (typeof lightdm !== 'undefined') {
+                                response = lightdm.respond(credentials.password)
+                                statusEl.innerText = "Authenticating...";
+                            }
+                        } else {
+                            credentials.password += dv.key;
+                            appendLetter(passwordEl);
+                        }
+                    }
+                    // This shouldn't really happen 
+                    else {
+                        throw new Error("Invalid field!");
+                    }
+                };
+
+                const handleAuthComplete = () => {
+                    if (lightdm.is_authenticated) {
+                        lightdm.start_session(null);
+                    } else {
+                        showError('Authentication failed');
+                        clear();
+                        statusEl.innerText = '';
+                        field = 0;
+                        userCursor.classList.remove('hide');
+                    }
+                };
+                  
+                // Different handling for different versions
+                if (typeof lightdm.authentication_complete !== 'undefined') {
+                    lightdm.authentication_complete.connect(handleAuthComplete);
+                } else {
+                    window.authentication_complete = handleAuthComplete;
+                }
+            })();
+        </script>
+    </body>
+</html>
